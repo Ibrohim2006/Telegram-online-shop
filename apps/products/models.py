@@ -1,11 +1,16 @@
 from django.db import models
-from django.contrib.auth import get_user_model
+from apps.users.models import User
 
-User = get_user_model()
 
 class Category(models.Model):
     name = models.CharField(max_length=200)
-    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children'
+    )
     image = models.ImageField(upload_to='categories/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     order = models.IntegerField(default=0)
@@ -24,6 +29,7 @@ class Category(models.Model):
             return f"{self.parent.full_path} > {self.name}"
         return self.name
 
+
 class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -33,15 +39,17 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
         return self.name
 
     @property
     def min_price(self):
         colors = self.colors.filter(is_active=True)
-        if colors.exists():
-            return min(color.price for color in colors)
-        return 0
+        return min((color.price for color in colors), default=0)
+
 
 class ProductColor(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='colors')
@@ -50,8 +58,12 @@ class ProductColor(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['name']
+
     def __str__(self):
         return f"{self.product.name} - {self.name}"
+
 
 class ProductColorImage(models.Model):
     color = models.ForeignKey(ProductColor, on_delete=models.CASCADE, related_name='images')
@@ -61,10 +73,17 @@ class ProductColorImage(models.Model):
     class Meta:
         ordering = ['order']
 
+    def __str__(self):
+        return f"{self.color} - Image {self.order}"
+
+
 class Cart(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='carts')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
     def __str__(self):
         return f"Cart for {self.user.username}"
@@ -72,6 +91,7 @@ class Cart(models.Model):
     @property
     def total_amount(self):
         return sum(item.total_price for item in self.items.all())
+
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
@@ -81,6 +101,7 @@ class CartItem(models.Model):
 
     class Meta:
         unique_together = ['cart', 'product_color']
+        ordering = ['-created_at']
 
     def __str__(self):
         return f"{self.product_color} x {self.quantity}"

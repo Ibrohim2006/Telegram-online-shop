@@ -117,3 +117,22 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
 
     builder.adjust(2)
     return builder.as_markup()
+
+
+def get_product_keyboard(product, colors, language: str) -> InlineKeyboardMarkup:
+    """Get product color selection keyboard (oldingi get_product_colors_keyboard ga o'xshash)"""
+    builder = InlineKeyboardBuilder()
+
+    for color in colors:
+        builder.add(InlineKeyboardButton(
+            text=f"{color.name} - {color.price} so'm",
+            callback_data=f"add_to_cart_{color.id}"
+        ))
+
+    builder.add(InlineKeyboardButton(
+        text=translate_text("🔙 Orqaga", language),
+        callback_data=f"back_to_category_{product.id}"
+    ))
+
+    builder.adjust(1)
+    return builder.as_markup()

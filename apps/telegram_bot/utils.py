@@ -22,7 +22,8 @@ def get_user_language(telegram_id: int) -> str:
 
 
 def translate_text(text: str, language: str) -> str:
-    """Simple translation function"""
+    """Simple translation function with fallback"""
+
     translations = {
         'uz': {
             "Iltimos, telefon raqamingizni yuboring:": "Iltimos, telefon raqamingizni yuboring:",
@@ -68,7 +69,9 @@ def translate_text(text: str, language: str) -> str:
         }
     }
 
-    return translations.get(language, {}).get(text, text)
+    # fallbacklar
+    lang_translations = translations.get(language, translations['uz'])
+    return lang_translations.get(text, text)
 
 
 async def get_or_create_user(telegram_id: int, telegram_user) -> User:
