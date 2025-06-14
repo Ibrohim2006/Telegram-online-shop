@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TelegramBot:
     def __init__(self):
         # Initialize bot and dispatcher
-        self.bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+        self.bot = Bot(token=settings.BOT_TOKEN)
 
         # Redis storage for FSM
         storage = RedisStorage.from_url(settings.REDIS_URL)

@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     'apps.products',
     'apps.users',
     'apps.telegram_bot',
+    # Installed packages
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -162,4 +164,4 @@ CELERY_RESULT_BACKEND = REDIS_URL
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-AUTH_USER_MODEL = 'apps.users.User'
+AUTH_USER_MODEL = 'users.User'

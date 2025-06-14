@@ -7,10 +7,10 @@ from .models import User, TelegramUserSession
 class UserAdmin(BaseUserAdmin):
     list_display = (
         'username', 'telegram_id', 'phone_number',
-        'language', 'is_active_telegram', 'is_staff'
+        'language', 'is_active'
     )
-    list_filter = ('is_active_telegram', 'language', 'is_staff')
-    search_fields = ('username', 'telegram_id', 'phone_number', 'first_name', 'last_name')
+    list_filter = ('is_active', 'language')
+    search_fields = ('username', 'telegram_id', 'phone_number')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'updated_at')
 
@@ -18,7 +18,7 @@ class UserAdmin(BaseUserAdmin):
         ('Telegram Info', {
             'fields': (
                 'telegram_id', 'phone_number', 'language',
-                'is_active_telegram', 'created_at', 'updated_at'
+                'created_at', 'updated_at'
             ),
         }),
     )

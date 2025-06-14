@@ -1,20 +1,21 @@
 from aiogram import Router, F, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from django.contrib.auth import get_user_model
-from apps.products.models import Category, Product, Cart
+from apps.products.models import Category, Product, Cart, CartItem, ProductColor
 from apps.users.models import TelegramUserSession
-from .keyboards import get_main_menu_keyboard, get_categories_keyboard, get_product_keyboard
+from .keyboards import get_main_menu_keyboard, get_categories_keyboard, get_product_keyboard, get_cart_keyboard
 from .utils import translate_text
+from .states import OrderCreation
 
 User = get_user_model()
 
 router = Router()
 
 
-# Start komandasi
+# Start command remains the same
 @router.message(Command("start"))
 async def start_command(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
@@ -49,7 +50,7 @@ async def start_command(message: types.Message, state: FSMContext):
     await show_main_menu(message, user)
 
 
-# Telefon raqam qabul qilish
+# Contact handler remains the same
 @router.message(F.contact)
 async def handle_contact(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
@@ -66,7 +67,6 @@ async def handle_contact(message: types.Message, state: FSMContext):
         await show_main_menu(message, user)
 
 
-# Asosiy menu
 async def show_main_menu(message: types.Message, user: User):
     keyboard = get_main_menu_keyboard(user.language)
     await message.answer(
@@ -75,8 +75,8 @@ async def show_main_menu(message: types.Message, user: User):
     )
 
 
-# Kategoriya ko'rsatish
-@router.message(F.text == "📂 Kategoriyalar")  # Bu joyda sen main menu tugmasi textiga mos yoz
+# Categories and products browsing
+@router.message(F.text.in_(["🛍 Mahsulotlar", "🛍 Товары"]))
 async def show_categories(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
     user = User.objects.get(telegram_id=telegram_id)
@@ -90,7 +90,6 @@ async def show_categories(message: types.Message, state: FSMContext):
     )
 
 
-# Callback - category tanlash
 @router.callback_query(F.data.startswith("category_"))
 async def handle_category_selection(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -116,7 +115,6 @@ async def handle_category_selection(callback_query: types.CallbackQuery, state: 
             )
 
 
-# Mahsulotlarni ko'rsatish
 async def show_products_in_category(callback_query, products, language):
     builder = InlineKeyboardBuilder()
 
@@ -131,7 +129,7 @@ async def show_products_in_category(callback_query, products, language):
         callback_data="back_to_categories"
     ))
 
-    builder.adjust(1)  # Har bir qatorga 1 tadan tugma
+    builder.adjust(1)
 
     await callback_query.message.edit_text(
         translate_text("🛍 Mahsulotlarni tanlang:", language),
@@ -139,7 +137,6 @@ async def show_products_in_category(callback_query, products, language):
     )
 
 
-# Mahsulot detallarini ko'rsatish
 @router.callback_query(F.data.startswith("product_"))
 async def show_product_details(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -163,3 +160,230 @@ async def show_product_details(callback_query: types.CallbackQuery, state: FSMCo
         )
     else:
         await callback_query.message.edit_text(text, reply_markup=keyboard)
+
+
+# Add to cart functionality
+@router.callback_query(F.data.startswith("add_to_cart_"))
+async def add_to_cart_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+    color_id = int(callback_query.data.split('_')[3])
+
+    try:
+        color = ProductColor.objects.get(id=color_id)
+        cart, created = Cart.objects.get_or_create(user=user)
+        cart_item, created = CartItem.objects.get_or_create(
+            cart=cart,
+            product_color=color,
+            defaults={'quantity': 1}
+        )
+
+        if not created:
+            cart_item.quantity += 1
+            cart_item.save()
+
+        await callback_query.answer(
+            translate_text(f"{color.product.name} ({color.name}) savatchaga qo'shildi!", user.language),
+            show_alert=True
+        )
+    except Exception as e:
+        await callback_query.answer(
+            translate_text("Xatolik yuz berdi. Iltimos, qayta urunib ko'ring.", user.language),
+            show_alert=True
+        )
+
+
+# Cart management
+@router.message(F.text.in_(["🛒 Savatcha", "🛒 Корзина"]))
+async def show_cart(message: types.Message):
+    telegram_id = message.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    try:
+        cart = Cart.objects.get(user=user)
+        items = cart.items.all()
+
+        if not items.exists():
+            await message.answer(translate_text("🛒 Savatchangiz bo'sh", user.language))
+            return
+
+        text = translate_text("🛒 Savatchangiz:\n\n", user.language)
+        total = 0
+
+        for item in items:
+            product = item.product_color.product
+            color = item.product_color
+            item_total = item.quantity * color.price
+            total += item_total
+
+            text += f"• {product.name} ({color.name})\n"
+            text += f"  {item.quantity} x {color.price} = {item_total} so'm\n"
+            text += f"  [<a href='remove_item_{item.id}'>❌ O'chirish</a>]\n\n"
+
+        text += f"\n💰 {translate_text('Jami:', user.language)} {total} so'm"
+
+        keyboard = get_cart_keyboard(user.language)
+        await message.answer(text, reply_markup=keyboard)
+
+    except Cart.DoesNotExist:
+        await message.answer(translate_text("🛒 Savatchangiz bo'sh", user.language))
+
+
+# Remove item from cart
+@router.callback_query(F.data.startswith("remove_item_"))
+async def remove_item_from_cart(callback_query: types.CallbackQuery):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+    item_id = int(callback_query.data.split('_')[2])
+
+    try:
+        item = CartItem.objects.get(id=item_id)
+        item.delete()
+
+        await callback_query.answer(
+            translate_text("Mahsulot savatchadan o'chirildi!", user.language),
+            show_alert=True
+        )
+
+        # Refresh the cart view
+        await show_cart(callback_query.message)
+
+    except CartItem.DoesNotExist:
+        await callback_query.answer(
+            translate_text("Mahsulot topilmadi!", user.language),
+            show_alert=True
+        )
+
+
+# Clear cart
+@router.callback_query(F.data == "clear_cart")
+async def clear_cart_handler(callback_query: types.CallbackQuery):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    try:
+        cart = Cart.objects.get(user=user)
+        cart.items.all().delete()
+
+        await callback_query.answer(
+            translate_text("Savatcha tozalandi!", user.language),
+            show_alert=True
+        )
+
+        await callback_query.message.edit_text(
+            translate_text("🛒 Savatchangiz bo'sh", user.language)
+        )
+    except Cart.DoesNotExist:
+        await callback_query.answer(
+            translate_text("Savatcha topilmadi!", user.language),
+            show_alert=True
+        )
+
+
+# Start order process
+@router.callback_query(F.data == "start_order")
+async def start_order_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    try:
+        cart = Cart.objects.get(user=user)
+        if not cart.items.exists():
+            await callback_query.answer(
+                translate_text("Savatchangiz bo'sh. Avval mahsulot qo'shing.", user.language),
+                show_alert=True
+            )
+            return
+
+        await state.set_state(OrderCreation.entering_address)
+        await callback_query.message.answer(
+            translate_text("📝 Buyurtma berish:\n\nIltimos, yetkazib berish manzilini yuboring:", user.language)
+        )
+
+    except Cart.DoesNotExist:
+        await callback_query.answer(
+            translate_text("Savatcha topilmadi!", user.language),
+            show_alert=True
+        )
+
+
+# Address handler for order
+@router.message(OrderCreation.entering_address)
+async def process_address(message: types.Message, state: FSMContext):
+    telegram_id = message.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    await state.update_data(address=message.text)
+    await state.set_state(OrderCreation.confirming_order)
+
+    cart = Cart.objects.get(user=user)
+    items = cart.items.all()
+    total = sum(item.quantity * item.product_color.price for item in items)
+
+    text = translate_text("📝 Buyurtma tafsilotlari:\n\n", user.language)
+    text += translate_text("📦 Mahsulotlar:\n", user.language)
+
+    for item in items:
+        product = item.product_color.product
+        color = item.product_color
+        item_total = item.quantity * color.price
+
+        text += f"• {product.name} ({color.name}) - {item.quantity} x {color.price} = {item_total} so'm\n"
+
+    text += f"\n💰 {translate_text('Jami:', user.language)} {total} so'm\n"
+    text += f"\n🏠 {translate_text('Manzil:', user.language)} {message.text}\n\n"
+    text += translate_text("Buyurtmani tasdiqlaysizmi?", user.language)
+
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(
+        text=translate_text("✅ Tasdiqlash", user.language),
+        callback_data="confirm_order"
+    ))
+    keyboard.add(InlineKeyboardButton(
+        text=translate_text("❌ Bekor qilish", user.language),
+        callback_data="cancel_order"
+    ))
+
+    await message.answer(text, reply_markup=keyboard.as_markup())
+
+
+# Confirm order
+@router.callback_query(F.data == "confirm_order")
+async def confirm_order_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    try:
+        data = await state.get_data()
+        address = data.get('address')
+
+        # Here you would typically create an order in your database
+        # For now, we'll just show a confirmation message
+
+        await callback_query.message.edit_text(
+            translate_text("✅ Buyurtmangiz qabul qilindi! Tez orada siz bilan bog'lanamiz.", user.language)
+        )
+
+        # Clear the cart
+        cart = Cart.objects.get(user=user)
+        cart.items.all().delete()
+
+        await state.clear()
+
+    except Exception as e:
+        await callback_query.message.edit_text(
+            translate_text("Xatolik yuz berdi. Iltimos, qayta urunib ko'ring.", user.language)
+        )
+
+
+# Cancel order
+@router.callback_query(F.data == "cancel_order")
+async def cancel_order_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    user = User.objects.get(telegram_id=telegram_id)
+
+    await callback_query.message.edit_text(
+        translate_text("❌ Buyurtma bekor qilindi.", user.language)
+    )
+    await state.clear()
+    await show_main_menu(callback_query.message, user)

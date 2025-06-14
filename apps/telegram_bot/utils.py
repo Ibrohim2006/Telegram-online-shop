@@ -1,6 +1,7 @@
 import os
 import django
 from django.conf import settings
+from asgiref.sync import sync_to_async
 
 # Django setup for standalone script
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'telegram_shop.settings')
@@ -8,12 +9,15 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 from apps.users.models import TelegramUserSession
+from apps.products.models import Cart, CartItem
 
 User = get_user_model()
 
 
+# Database operations
+@sync_to_async
 def get_user_language(telegram_id: int) -> str:
-    """Get user's preferred language"""
+    """Get user's preferred language (async)"""
     try:
         user = User.objects.get(telegram_id=telegram_id)
         return user.language
@@ -21,9 +25,84 @@ def get_user_language(telegram_id: int) -> str:
         return 'uz'
 
 
-def translate_text(text: str, language: str) -> str:
-    """Simple translation function with fallback"""
+@sync_to_async
+def get_user_by_telegram_id(telegram_id: int):
+    """Get user by telegram ID (async)"""
+    try:
+        return User.objects.get(telegram_id=telegram_id)
+    except User.DoesNotExist:
+        return None
 
+
+@sync_to_async
+def get_or_create_user(telegram_id: int, telegram_user) -> User:
+    """Get or create user from telegram data (async)"""
+    try:
+        return User.objects.get(telegram_id=telegram_id)
+    except User.DoesNotExist:
+        user = User.objects.create(
+            username=f"user_{telegram_id}",
+            telegram_id=telegram_id,
+            first_name=telegram_user.first_name or "",
+            last_name=telegram_user.last_name or ""
+        )
+        TelegramUserSession.objects.create(user=user)
+        return user
+
+
+@sync_to_async
+def get_user_cart(user):
+    """Get user's cart (async)"""
+    try:
+        return Cart.objects.get(user=user)
+    except Cart.DoesNotExist:
+        return None
+
+
+@sync_to_async
+def create_cart(user):
+    """Create cart for user (async)"""
+    return Cart.objects.create(user=user)
+
+
+@sync_to_async
+def cart_has_items(cart):
+    """Check if cart has items (async)"""
+    return cart.items.exists()
+
+
+@sync_to_async
+def get_cart_items(cart):
+    """Get cart items (async)"""
+    return list(cart.items.all())
+
+
+@sync_to_async
+def clear_cart_items(cart):
+    """Clear all items from cart (async)"""
+    cart.items.all().delete()
+
+
+@sync_to_async
+def format_cart_text(cart, language: str) -> str:
+    """Format cart items text (async)"""
+    if not cart.items.exists():
+        return translate_text("🛒 Savatchangiz bo'sh", language)
+
+    text = translate_text("🛒 Savatchangiz:\n\n", language)
+    items = cart.items.all()
+
+    for item in items:
+        text += f"• {item.product_color.product.name} ({item.product_color.name})\n"
+        text += f"  {item.quantity} x {item.product_color.price} = {item.total_price} so'm\n\n"
+
+    text += f"💰 {translate_text('Jami:', language)} {cart.total_amount} so'm"
+    return text
+
+
+# Non-database functions
+def translate_text(text: str, language: str) -> str:
+    """Simple translation function with fallback (sync)"""
     translations = {
         'uz': {
             "Iltimos, telefon raqamingizni yuboring:": "Iltimos, telefon raqamingizni yuboring:",
@@ -69,41 +148,35 @@ def translate_text(text: str, language: str) -> str:
         }
     }
 
-    # fallbacklar
     lang_translations = translations.get(language, translations['uz'])
     return lang_translations.get(text, text)
 
 
-async def get_or_create_user(telegram_id: int, telegram_user) -> User:
-    """Get or create user from telegram data"""
-    try:
-        user = User.objects.get(telegram_id=telegram_id)
-        return user
-    except User.DoesNotExist:
-        user = User.objects.create(
-            username=f"user_{telegram_id}",
-            telegram_id=telegram_id,
-            first_name=telegram_user.first_name or "",
-            last_name=telegram_user.last_name or ""
-        )
-
-        # Create session
-        TelegramUserSession.objects.create(user=user)
-
-        return user
+# Additional utility functions
+@sync_to_async
+def update_user_language(user, language: str):
+    """Update user's language preference (async)"""
+    user.language = language
+    user.save()
 
 
-def format_cart_text(cart, language: str) -> str:
-    """Format cart items text"""
-    if not cart.items.exists():
-        return translate_text("🛒 Savatchangiz bo'sh", language)
+@sync_to_async
+def update_user_phone(user, phone_number: str):
+    """Update user's phone number (async)"""
+    user.phone_number = phone_number
+    user.save()
 
-    text = translate_text("🛒 Savatchangiz:\n\n", language)
 
-    for item in cart.items.all():
-        text += f"• {item.product_color.product.name} ({item.product_color.name})\n"
-        text += f"  {item.quantity} x {item.product_color.price} = {item.total_price} so'm\n\n"
-
-    text += f"💰 {translate_text('Jami:', language)} {cart.total_amount} so'm"
-
-    return text
+@sync_to_async
+def add_to_cart(user, product_color, quantity=1):
+    """Add item to cart (async)"""
+    cart, _ = Cart.objects.get_or_create(user=user)
+    item, created = CartItem.objects.get_or_create(
+        cart=cart,
+        product_color=product_color,
+        defaults={'quantity': quantity}
+    )
+    if not created:
+        item.quantity += quantity
+        item.save()
+    return item

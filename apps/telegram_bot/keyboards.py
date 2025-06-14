@@ -4,7 +4,6 @@ from .utils import translate_text
 
 
 def get_main_menu_keyboard(language: str) -> ReplyKeyboardMarkup:
-    """Get main menu keyboard"""
     builder = ReplyKeyboardBuilder()
 
     builder.add(KeyboardButton(text=translate_text("🛍 Mahsulotlar", language)))
@@ -17,7 +16,6 @@ def get_main_menu_keyboard(language: str) -> ReplyKeyboardMarkup:
 
 
 def get_phone_request_keyboard(language: str) -> ReplyKeyboardMarkup:
-    """Get phone request keyboard"""
     builder = ReplyKeyboardBuilder()
 
     builder.add(KeyboardButton(
@@ -29,7 +27,6 @@ def get_phone_request_keyboard(language: str) -> ReplyKeyboardMarkup:
 
 
 def get_categories_keyboard(categories, language: str, parent_id=None) -> InlineKeyboardMarkup:
-    """Get categories inline keyboard"""
     builder = InlineKeyboardBuilder()
 
     for category in categories:
@@ -54,7 +51,6 @@ def get_categories_keyboard(categories, language: str, parent_id=None) -> Inline
 
 
 def get_products_keyboard(products, language: str) -> InlineKeyboardMarkup:
-    """Get products keyboard"""
     builder = InlineKeyboardBuilder()
 
     for product in products:
@@ -72,8 +68,7 @@ def get_products_keyboard(products, language: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_product_colors_keyboard(colors, language: str) -> InlineKeyboardMarkup:
-    """Get product colors keyboard"""
+def get_product_keyboard(product, colors, language: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for color in colors:
@@ -84,7 +79,7 @@ def get_product_colors_keyboard(colors, language: str) -> InlineKeyboardMarkup:
 
     builder.add(InlineKeyboardButton(
         text=translate_text("🔙 Orqaga", language),
-        callback_data="back_to_products"
+        callback_data=f"back_to_category_{product.category.id}"
     ))
 
     builder.adjust(1)
@@ -92,7 +87,6 @@ def get_product_colors_keyboard(colors, language: str) -> InlineKeyboardMarkup:
 
 
 def get_cart_keyboard(language: str) -> InlineKeyboardMarkup:
-    """Get cart management keyboard"""
     builder = InlineKeyboardBuilder()
 
     builder.add(InlineKeyboardButton(
@@ -109,7 +103,6 @@ def get_cart_keyboard(language: str) -> InlineKeyboardMarkup:
 
 
 def get_language_keyboard() -> InlineKeyboardMarkup:
-    """Get language selection keyboard"""
     builder = InlineKeyboardBuilder()
 
     builder.add(InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="lang_uz"))
@@ -119,20 +112,17 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_product_keyboard(product, colors, language: str) -> InlineKeyboardMarkup:
-    """Get product color selection keyboard (oldingi get_product_colors_keyboard ga o'xshash)"""
+def get_order_confirmation_keyboard(language: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    for color in colors:
-        builder.add(InlineKeyboardButton(
-            text=f"{color.name} - {color.price} so'm",
-            callback_data=f"add_to_cart_{color.id}"
-        ))
-
     builder.add(InlineKeyboardButton(
-        text=translate_text("🔙 Orqaga", language),
-        callback_data=f"back_to_category_{product.id}"
+        text=translate_text("✅ Tasdiqlash", language),
+        callback_data="confirm_order"
+    ))
+    builder.add(InlineKeyboardButton(
+        text=translate_text("❌ Bekor qilish", language),
+        callback_data="cancel_order"
     ))
 
-    builder.adjust(1)
+    builder.adjust(2)
     return builder.as_markup()
